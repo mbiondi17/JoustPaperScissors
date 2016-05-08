@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset=utf-8>
+		<title>Joust Paper Scissors</title>
+       	<style>
+          	body {
+               	color: #61443e;
+               	font-family:Monospace;
+               	font-size:13px;
+               	text-align:center;
+
+               	background-color: black;
+               	margin: 0px;
+               }
+
+               #gameCanvas {
+				background-color: black;
+				width: 1000;
+				height: 563;
+				margin: auto;
+				align: center;
+				float:top;
+			}
+
+			#scoreboard {
+				align:center;
+				text-align: center;
+				font-family: Segoe UI, Helvetica, Ubuntu, sans-serif;
+				color: white;
+			}
+			#scores {
+				font-size:250%; 
+				padding:0; 
+				margin:0;
+				color: white;
+			}
+			#title {
+				background-color: white;
+				color: black;
+			}
+
+/*          	#info {
+               	position: absolute;
+               	top: 0px; width: 100%;
+               	padding:50px;
+               	margin:50px;
+               	background-color: black;
+               	color: white;
+            	}*/
+
+            a {
+
+                color: #a06851;
+            }
+
+		div.unselectedBox {
+			width:164px;
+ 			margin: 0px;
+ 			padding:0px;
+ 			color: black;
+			background-color: #FFFFFF;
+			border: 1px solid black;
+			opacity: 0.6;
+			float:left;
+			overflow:hidden;
+		}
+
+		div.selectedBox {
+			width:164px;
+			color: black;
+			margin:0px;
+			padding:0px;
+			background-color: #ffffff;
+			border: 1px solid black;
+			opacity: 1.0;
+			float:left;
+			overflow:hidden;
+		}
+
+		div.centerDiv {
+			width:1000px;
+			margin: 0 auto;
+		}
+
+
+		div.transbox p {
+  			text-align:center;
+  			halign:center;
+		}
+		</style>
+	</head>
+
+	<body>
+
+	<div id="gameCanvas"></div> 
+		<script src="three.js"></script>
+		<script src="ammo.js"></script>
+		<script src="OrbitControls.js"></script>
+		<script src="Detector.js"></script>
+		<script>
+
+		//-----------------------------------
+		// GLOBAL VARS
+		//-----------------------------------
+
+		//viewport vars
+		var WIDTH = 1000;
+		var HEIGHT = 563;
+
+		//Player score and game state variables
+			var p1Score = 0, p2Score = 0;
+			var numTilts = 3;
+			var currTilts = 0;
+		
+		// Graphics variables
+	          var container, stats;
+	          var camera, controls, scene, renderer;
+	          var textureLoader;
+	          var clock = new THREE.Clock();
+	          var clickRequest = false;
+	          var mouseCoords = new THREE.Vector2();
+	          var raycaster = new THREE.Raycaster();
+	          var pos = new THREE.Vector3();
+	          var quat = new THREE.Quaternion();
+
+          // Physics variables
+	          var gravityConstant = -9.8;
+			var collisionConfiguration;
+			var dispatcher;
+			var broadphase;
+			var solver;
+			var physicsWorld;
+			var rigidBodies = [];
+			var softBodies = [];
+			var margin = 0.05;
+			var transformAux1 = new Ammo.btTransform();
+
+		//game objects
+			var cube1, cube2;
+			var horse1, horse2;
+			var knight1, knight2;
+			var lance1, lance2;
+
+		//game logic variables
+			var joust = false;
+			var joustOver = false;
+
+			var playerLance = 0;
+			var playerShield = 0;
+			var AILance = 0;
+			var AIShield = 0;
+			var playerPoints;
+			var AIPoints;
+
+			var joustVarsSet = 0;
+
+		//collision masking vars
+     		var COL_KN1 = BIT(0); // knight 1 collider mask
+     		var COL_KN2 = BIT(1); // knight 2 collider mask
+     		var COL_LA1 = BIT(2); // lance 1 collider mask
+     		var COL_LA2 = BIT(3); // lance 2 collider mask
+     		var COL_HR1 = BIT(4); // horse 1 collider mask
+     		var COL_HR2 = BIT(5); // horse 2 collider mask
+     		var COL_GRD = BIT(6); // ground collider mask
+     		var COL_BAR = BIT(7); // barrier collider mask
+     		var COL_L1S = BIT(8); // lance 1 stand collider mask
+     		var COL_L2S = BIT(9); // lance 2 collider mask
+
+     		//what each thing collides with
+			var k1CollidesWith = COL_HR1 | COL_LA2 | COL_GRD;
+			var k2CollidesWith = COL_HR2 | COL_LA1 | COL_GRD;
+			var l1CollidesWith = COL_HR1 | COL_KN2 | COL_GRD | COL_L1S;
+			var l2CollidesWith = COL_HR2 | COL_KN1 | COL_GRD | COL_L2S;
+			var h1CollidesWith = COL_KN1 | COL_GRD | COL_LA1;
+			var h2CollidesWith = COL_KN2 | COL_GRD | COL_LA2 | COL_LA1;
+			var gdCollidesWith = COL_HR1 | COL_HR2 | COL_BAR | COL_KN1 | COL_KN2 | COL_LA1 | COL_LA2 | COL_L1S | COL_L2S;
+			var brCollidesWith = COL_GRD;
+			var s1CollidesWith = COL_GRD | COL_LA1 | COL_L1S;
+			var s2CollidesWith = COL_GRD | COL_LA2 | COL_L2S;
+
+		// init sets up scene, physics, etc. 
+		// main actually runs the game in a loop using animate() and render()
+
+		init();
+		main();
+
+
+		//------------------------------------------
+		//FUNCTIONS
+		//------------------------------------------
+
+		//helper for bit values
+		function BIT(x) {
+			return (1<<x);
+		}
+
+		function init() {
+
+			initGraphics();
+			initPhysics();
+			initInput();
+			createGameObjects();
+			updatePhysics(0.01);
+
+		}
+
+		function initGraphics() {
+
+			container = document.getElementById('gameCanvas');
+
+			camera = new THREE.PerspectiveCamera( 60, WIDTH / HEIGHT, 0.2, 2000 );
+				camera.position.x = 0;
+				camera.position.y = 34;
+               	camera.position.z = 21;
+
+               controls = new THREE.OrbitControls( camera );
+
+               scene = new THREE.Scene();
+
+               renderer = new THREE.WebGLRenderer();
+				renderer.setClearColor( 0xbfd1e5 );
+               	renderer.setPixelRatio( window.devicePixelRatio );
+               	renderer.setSize( WIDTH, HEIGHT );
+               	renderer.shadowMap.enabled = true;
+
+
+               textureLoader = new THREE.TextureLoader();
+
+               var ambientLight = new THREE.AmbientLight( 0x404040 );
+			scene.add( ambientLight );
+
+			var light = new THREE.DirectionalLight( 0xffffff, 1 );
+                	light.position.set( -10, 10, 5 );
+				light.castShadow = true;
+				var d = 20;
+			    	light.shadow.camera.left = -d;
+			    	light.shadow.camera.right = d;
+			    	light.shadow.camera.top = d;
+			    	light.shadow.camera.bottom = -d;
+
+			    	light.shadow.camera.near = 2;
+			    	light.shadow.camera.far = 50;
+
+			    	light.shadow.mapSize.width = 1024;
+			    	light.shadow.mapSize.height = 1024;
+               scene.add( light );
+
+               container.innerHTML = "";
+               container.appendChild( renderer.domElement );
+
+		}
+
+		function initPhysics() {
+
+			collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+			dispatcher = new Ammo.btCollisionDispatcher( collisionConfiguration );
+			broadphase = new Ammo.btDbvtBroadphase();
+			solver = new Ammo.btSequentialImpulseConstraintSolver();
+			physicsWorld = new Ammo.btDiscreteDynamicsWorld( dispatcher, broadphase, solver, collisionConfiguration);
+			physicsWorld.setGravity( new Ammo.btVector3( 0, gravityConstant, 0 ) );
+		}
+
+		function initInput() {
+
+			document.addEventListener('click', function(e) {
+   				e = e || window.event;
+     			var target = e.target || e.srcElement,
+          		text = target.textContent || text.innerText; 
+          		processClick(text);
+			}, false);
+
+
+          }
+
+          function createGameObjects() {
+
+          	groundMass = 0;
+			horseMass = 100000;
+			knightMass = 1;
+			LanceMass = 1000;
+			barrierMass = 100000;
+          	//---------------------------------------------------------------
+          	//---------------------- Create the Ground ----------------------
+          	//---------------------------------------------------------------
+
+
+			pos.set( 0, -1, 0 );
+			quat.set( 0, 0, 0, 1 );
+			var ground;
+			
+			var groundObj = new THREE.Mesh( new THREE.BoxGeometry( 80, 1, 40, 1, 1, 1 ), new THREE.MeshBasicMaterial( { color: 0x00F8E7 } ) );
+			textureLoader.load( "./Textures/grasstile.png", function( texture ) {
+				texture.wrapS = THREE.RepeatWrapping;
+				texture.wrapT = THREE.RepeatWrapping;
+				texture.repeat.set( 20, 20 );
+				groundObj.material.map = texture;
+				groundObj.material.needsUpdate = true;
+			} );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3( 80 * 0.5, 1 * 0.5, 40 * 0.5 ) );
+			shape.setMargin( margin );
+			var ground = createRigidBody( groundObj, shape, groundMass, pos, quat, COL_GRD, gdCollidesWith);
+			ground.castShadow = true;
+			ground.receiveShadow = true;
+			ground.setFriction(0.0);
+
+			//----------------------------------------------------------------
+          	//---------------------- Create the Barrier ----------------------
+          	//----------------------------------------------------------------
+
+			pos.set( 0, 0.5, 0 );
+			quat.set( 0, 0, 0, 1 );
+			
+			var barrierObj = new THREE.Mesh( new THREE.BoxGeometry( 60, 2, 1, 1, 1, 1 ), new THREE.MeshBasicMaterial( { color: 0xFFFFFF } ) );
+			textureLoader.load( "./Textures/wood.jpg", function( texture ) {
+				texture.wrapS = THREE.RepeatWrapping;
+				texture.wrapT = THREE.RepeatWrapping;
+				texture.repeat.set( 12, 1 );
+				barrierObj.material.map = texture;
+				barrierObj.material.needsUpdate = true;
+			} );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3( 40 * 0.5, 2 * 0.5, 1 * 0.5 ) );
+			shape.setMargin( margin );
+			var barrier = createRigidBody( barrierObj, shape, barrierMass, pos, quat, COL_BAR, brCollidesWith );
+			barrier.castShadow = true;
+			barrier.receiveShadow = true;
+			barrier.setFriction(0.0);
+
+			//---------------------------------------------------------------------
+          	//---------------------- Create the First Knight ----------------------
+          	//---------------------------------------------------------------------
+
+			pos.set(35, 1, 2.5);
+			quat.set(0, 0, 0, 1);
+
+			//Knight 1's "Horse"
+			var knight1Horse = new THREE.Mesh (new THREE.BoxGeometry( 3, 3, 2, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0xFFFFFF } ) );
+			textureLoader.load( "./Textures/cubetex.jpg", function( texture ) {
+				texture.wrapS = THREE.ClampToEdgeWrapping;
+				texture.wrapT = THREE.ClampToEdgeWrapping;
+				texture.repeat.set( 4, 4 );
+				knight1Horse.material.map = texture;
+				knight1Horse.material.needsUpdate = true;
+			} );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3( 3 * 0.5, 3 * 0.5, 2 * 0.5 ) );
+			shape.setMargin(margin);
+			horse1 = createRigidBody( knight1Horse, shape, horseMass, pos, quat, COL_HR1, h1CollidesWith );
+			horse1.castShadow = true;
+			horse1.receiveShadow = true;
+			horse1.setLinearVelocity( new Ammo.btVector3( -10, 0, 0 ) );
+
+
+			pos.set(35, 3.25, 2.5);
+			quat.set(0, 0, 0, 1);
+			//Knight 1
+			var knight1Obj =  new THREE.Mesh( new THREE.BoxGeometry( 1.5, 1.5, 1.5, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0x0088FF}) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1.5 * 0.5, 1.5 * 0.5, 1.5 * 0.5) );
+			knight1 = createRigidBody( knight1Obj, shape, knightMass, pos, quat, COL_KN1, k1CollidesWith );
+			knight1.castShadow = true;
+			knight1.receiveShadow = true;
+			knight1.setLinearVelocity( new Ammo.btVector3( -10, 0, 0 ) );
+
+
+			pos.set(30, 2.5, -2.5);
+			quat.set(0, 0, 1, 1);
+			//Lance1			
+			var Lance1Obj =  new THREE.Mesh( new THREE.CylinderGeometry( 0.1, 0.5, 10, 32 ), new THREE.MeshBasicMaterial( {color: 0xFFFFFF}) );
+			textureLoader.load( "./Textures/blueLance.png", function( texture ) {
+				texture.wrapS = THREE.ClampToEdgeWrapping;
+				texture.wrapT = THREE.ClampToEdgeWrapping;
+				texture.repeat.set( 1, 1 );
+				Lance1Obj.material.map = texture;
+				Lance1Obj.material.needsUpdate = true;
+			} );
+			var shape = new Ammo.btCylinderShape(new Ammo.btVector3( 0.1, 10 * 0.5, 0.5 ));
+			lance1 = createRigidBody( Lance1Obj, shape, LanceMass, pos, quat, COL_LA1, l1CollidesWith );
+			lance1.castShadow = true;
+			lance1.receiveShadow = true;
+			lance1.setLinearVelocity( new Ammo.btVector3( -10, 0, 0 ) );
+
+			pos.set(30, 0, -2.5);
+			quat.set(0, 0, 1, 1);
+			//Lance1 Stand
+			var stand1Obj = new THREE.Mesh (new THREE.BoxGeometry( 3, 10, 5, 1, 1, 1), new THREE.MeshBasicMaterial( { color: 0x888888, transparent: true, opacity: 0.0 } ) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(3 * 0.5, 10 * 0.5, 5 * 0.5) );
+			var lanceStand1 = createRigidBody( stand1Obj, shape, 100000, pos, quat, COL_L1S, s1CollidesWith);
+			lanceStand1.castShadow = false;
+			lanceStand1.receiveShadow = false;
+			lanceStand1.setLinearVelocity( new Ammo.btVector3( -10, 0, 0 ) );
+
+
+			pos.set(30, 3, -1.9);
+			quat.set(0, 0, 1, 1);
+			var standholder1 = new THREE.Mesh (new THREE.BoxGeometry( 1, 10, 0.5, 1, 1, 1), new THREE.MeshBasicMaterial( { color: 0x888888, transparent: true, opacity: 0.0  } ) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1 * 0.5, 10 * 0.5, 1 * 0.5) );
+			var lanceHolder1 = createRigidBody( standholder1, shape, 100000, pos, quat, COL_L1S, s1CollidesWith);
+			lanceHolder1.castShadow = false;
+			lanceHolder1.receiveShadow = false;
+			lanceHolder1.setLinearVelocity( new Ammo.btVector3( -10, 0, 0 ) );
+
+			pos.set(30, 3, -3.1);
+			quat.set(0, 0, 1, 1);
+			var standholder2 = new THREE.Mesh (new THREE.BoxGeometry( 1, 10, 0.5, 1, 1, 1), new THREE.MeshBasicMaterial( { color: 0x888888, transparent: true, opacity: 0.0  } ) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1 * 0.5, 10 * 0.5, 1 * 0.5) );
+			var lanceHolder2 = createRigidBody( standholder2, shape, 100000, pos, quat, COL_L1S, s1CollidesWith);
+			lanceHolder2.castShadow = false;
+			lanceHolder2.receiveShadow = false;
+			lanceHolder2.setLinearVelocity( new Ammo.btVector3( -10, 0, 0 ) );
+
+			//----------------------------------------------------------------------
+          	//---------------------- Create the Second Knight ----------------------
+          	//----------------------------------------------------------------------
+
+			pos.set(-35, 1, -2.5);
+			quat.set(0, 0, 0, 1);
+
+			//Knight 2's "Horse"
+			var knight2Horse = new THREE.Mesh (new THREE.BoxGeometry( 3, 3, 2, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0xFFFFFF } ) );
+			textureLoader.load( "./Textures/cubetex.jpg", function( texture ) {
+				texture.wrapS = THREE.ClampToEdgeWrapping;
+				texture.wrapT = THREE.ClampToEdgeWrapping;
+				texture.repeat.set( 4, 4 );
+				knight2Horse.material.map = texture;
+				knight2Horse.material.needsUpdate = true;
+			} );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3( 3 * 0.5, 3 * 0.5, 2 * 0.5 ) );
+			shape.setMargin(margin);
+			horse2 = createRigidBody( knight2Horse, shape, horseMass, pos, quat, COL_HR2, h2CollidesWith );
+			horse2.castShadow = true;
+			horse2.receiveShadow = true;
+			horse2.setLinearVelocity( new Ammo.btVector3( 10, 0, 0 ) );
+
+
+			pos.set(-35, 3.25, -2.5);
+			quat.set(0, 0, 0, 1);
+			//Knight 2
+			var knight2Obj =  new THREE.Mesh( new THREE.BoxGeometry( 1.5, 1.5, 1.5, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0xFF0044}) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1.5 * 0.5, 1.5 * 0.5, 1.5 * 0.5) );
+			knight2 = createRigidBody( knight2Obj, shape, knightMass, pos, quat, COL_KN2, k2CollidesWith );
+			knight2.castShadow = true;
+			knight2.receiveShadow = true;
+			knight2.setLinearVelocity( new Ammo.btVector3( 10, 0, 0 ) );
+
+
+			pos.set(-30, 2.5, 2.5);
+			quat.set(0, 0, 1, 1);
+			//Lance2			
+			var Lance2Obj =  new THREE.Mesh( new THREE.CylinderGeometry( 0.5, 0.1, 10, 32 ), new THREE.MeshBasicMaterial( {color: 0xFFFFFF}) );
+			textureLoader.load( "./Textures/redLance.png", function( texture ) {
+				texture.wrapS = THREE.ClampToEdgeWrapping;
+				texture.wrapT = THREE.ClampToEdgeWrapping;
+				texture.repeat.set( 1, 1 );
+				Lance2Obj.material.map = texture;
+				Lance2Obj.material.needsUpdate = true;
+			} );
+			var shape = new Ammo.btCylinderShape(new Ammo.btVector3( 0.1, 10 * 0.5, 0.5 ));
+			lance2 = createRigidBody( Lance2Obj, shape, LanceMass, pos, quat, COL_LA2, l2CollidesWith );
+			lance2.castShadow = true;
+			lance2.receiveShadow = true;
+			lance2.setLinearVelocity( new Ammo.btVector3( 10, 0, 0 ) );
+
+			pos.set(-30, 0, 2.5);
+			quat.set(0, 0, 1, 1);
+			//Lance2 Stand
+			var stand2Obj = new THREE.Mesh (new THREE.BoxGeometry( 3, 10, 5, 1, 1, 1), new THREE.MeshBasicMaterial( { color: 0x888888, transparent: true, opacity: 0.0 } ) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(3 * 0.5, 10 * 0.5, 5 * 0.5) );
+			var lanceStand2 = createRigidBody( stand2Obj, shape, 100000, pos, quat, COL_L2S, s2CollidesWith);
+			lanceStand2.castShadow = false;
+			lanceStand2.receiveShadow = false;
+			lanceStand2.setLinearVelocity( new Ammo.btVector3( 10, 0, 0 ) );
+
+
+			pos.set(-30, 3, 1.9);
+			quat.set(0, 0, 1, 1);
+			var standholder3 = new THREE.Mesh (new THREE.BoxGeometry( 1, 10, 0.5, 1, 1, 1), new THREE.MeshBasicMaterial( { color: 0x888888, transparent: true, opacity: 0.0  } ) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1 * 0.5, 10 * 0.5, 1 * 0.5) );
+			var lanceHolder3 = createRigidBody( standholder3, shape, 100000, pos, quat, COL_L2S, s2CollidesWith);
+			lanceHolder3.castShadow = false;
+			lanceHolder3.receiveShadow = false;
+			lanceHolder3.setLinearVelocity( new Ammo.btVector3( 10, 0, 0 ) );
+
+			pos.set(-30, 3, 3.1);
+			quat.set(0, 0, 1, 1);
+			var standholder4 = new THREE.Mesh (new THREE.BoxGeometry( 1, 10, 0.5, 1, 1, 1), new THREE.MeshBasicMaterial( { color: 0x888888, transparent: true, opacity: 0.0  } ) );
+			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1 * 0.5, 10 * 0.5, 1 * 0.5) );
+			var lanceHolder4 = createRigidBody( standholder4, shape, 100000, pos, quat, COL_L2S, s2CollidesWith);
+			lanceHolder4.castShadow = false;
+			lanceHolder4.receiveShadow = false;
+			lanceHolder4.setLinearVelocity( new Ammo.btVector3( 10, 0, 0 ) );
+		}
+
+
+		//bitMask -- 0 means collides with Knight1 and associated Objects, 1 means the same for knight2
+          function createRigidBody( threeObject, physicsShape, mass, pos, quat, bitMask, collideInt ) {
+
+            	threeObject.position.copy( pos );
+            	threeObject.quaternion.copy( quat );
+
+			var transform = new Ammo.btTransform();
+    			transform.setIdentity();
+    			transform.setOrigin( new Ammo.btVector3( pos.x, pos.y, pos.z ) );
+    			transform.setRotation( new Ammo.btQuaternion( quat.x, quat.y, quat.z, quat.w ) );
+			var motionState = new Ammo.btDefaultMotionState( transform );
+
+			var localInertia = new Ammo.btVector3( 0, 0, 0 );
+		    	physicsShape.calculateLocalInertia( mass, localInertia );
+
+		    	var rbInfo = new Ammo.btRigidBodyConstructionInfo( mass, motionState, physicsShape, localInertia );
+		    	var body = new Ammo.btRigidBody( rbInfo );
+
+				threeObject.userData.physicsBody = body;
+
+				scene.add( threeObject );
+
+				if ( mass > 0 ) {
+					rigidBodies.push( threeObject );
+
+					// Disable deactivation
+					body.setActivationState( 4 );
+				}
+
+				if(bitMask != -1) {
+					physicsWorld.addRigidBody( body, bitMask, collideInt);
+				}
+				else {
+					physicsWorld.addRigidBody( body );
+				}
+
+               return body;
+          }
+
+          function updatePhysics( deltaTime ) {
+
+                // Step world
+               physicsWorld.stepSimulation( deltaTime, 10 );
+               for ( var i = 0, il = rigidBodies.length; i < il; i++ ) {
+
+			    	var objThree = rigidBodies[ i ];
+			    	var objPhys = objThree.userData.physicsBody;
+				var ms = objPhys.getMotionState();
+
+				if ( ms ) {
+
+			        	ms.getWorldTransform( transformAux1 );
+					var p = transformAux1.getOrigin();
+					var q = transformAux1.getRotation();
+					objThree.position.set( p.x(), p.y(), p.z() );
+					objThree.quaternion.set( q.x(), q.y(), q.z(), q.w() );
+
+		      	}
+
+		     }
+
+		}
+
+		function setJoustVars() {
+
+			AIShield = Math.floor(Math.random() * 3) + 1;
+			AILance = Math.floor(Math.random() * 3) + 1;
+
+			PlayerPoints = Math.abs(playerLance - AIShield);
+			AIPoints = Math.abs(AILance - playerShield);
+
+			if(PlayerPoints == 2) {
+				physicsWorld.removeRigidBody(lance1);
+				lance1.setMassProps(100000, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(lance1, COL_LA1, l1CollidesWith);
+				physicsWorld.removeRigidBody(knight2);
+				knight2.setMassProps(1, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(knight2, COL_KN2, k2CollidesWith);
+				
+			}
+			else if (PlayerPoints == 1) {
+				physicsWorld.removeRigidBody(lance1);
+				lance1.setMassProps(10, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(lance1, COL_LA1, l1CollidesWith);
+				physicsWorld.removeRigidBody(knight2);
+				knight2.setMassProps(10, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(knight2, COL_KN2, k2CollidesWith);
+
+			}
+			else if (PlayerPoints == 0) {
+				physicsWorld.removeRigidBody(lance1);
+				lance1.setMassProps(1, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(lance1, COL_LA1, l1CollidesWith);
+				physicsWorld.removeRigidBody(knight2);
+				knight2.setMassProps(100000, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(knight2, COL_KN2, k2CollidesWith);
+			}
+
+			if(AIPoints == 2) {
+				physicsWorld.removeRigidBody(lance2);
+				lance2.setMassProps(100000, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(lance2, COL_LA2, l2CollidesWith);
+				physicsWorld.removeRigidBody(knight1);
+				knight1.setMassProps(1, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(knight1, COL_KN1, k1CollidesWith);
+			}
+			else if (AIPoints == 1) {
+				physicsWorld.removeRigidBody(lance2);
+				lance2.setMassProps(10, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(lance2, COL_LA2, l2CollidesWith);
+				physicsWorld.removeRigidBody(knight1);
+				knight1.setMassProps(100, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(knight1, COL_KN1, k1CollidesWith);
+			}
+			else if (AIPoints == 0) {
+				physicsWorld.removeRigidBody(lance2);
+				lance2.setMassProps(1, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(lance2, COL_LA2, l2CollidesWith);
+				physicsWorld.removeRigidBody(knight1);
+				knight1.setMassProps(100000, new Ammo.btVector3(0, 0, 0));
+				physicsWorld.addRigidBody(knight1, COL_KN1, k1CollidesWith);
+			}
+
+		}
+
+		function processClick(text) {
+
+			if(!joustOver) {
+
+	               if(playerShield == 0) {
+	               	if(text == "Shield High") {
+	               		document.getElementById('sHighBox').setAttribute("class", "selectedBox");
+	               		document.getElementById('sMedBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('sLowBox').setAttribute("class", "unselectedBox");
+	               		playerShield = 3;
+	               	}
+	               	else if(text == "Shield Med") {
+	               		document.getElementById('sHighBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('sMedBox').setAttribute("class", "selectedBox");
+	               		document.getElementById('sLowBox').setAttribute("class", "unselectedBox");
+	               		playerShield = 2;
+	               	}
+	               	else if(text == "Shield Low") {
+	               		document.getElementById('sHighBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('sMedBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('sLowBox').setAttribute("class", "selectedBox");
+	               		playerShield = 1;
+	               	}
+	               }
+	               if(playerLance == 0) {
+	               	if(text == "Lance High") {
+	               		document.getElementById('lHighBox').setAttribute("class", "selectedBox");
+	               		document.getElementById('lMedBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('lLowBox').setAttribute("class", "unselectedBox");
+	               		playerLance = 3;
+	               	}
+	               	else if(text == "Lance Med") {
+	               		document.getElementById('lHighBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('lMedBox').setAttribute("class", "selectedBox");
+	               		document.getElementById('lLowBox').setAttribute("class", "unselectedBox");
+	               		playerLance = 2;
+	               	}
+	               	else if(text == "Lance Low") {
+	               		document.getElementById('lHighBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('lMedBox').setAttribute("class", "unselectedBox");
+	               		document.getElementById('lLowBox').setAttribute("class", "selectedBox");
+	               		playerLance = 1;
+	               	}
+	               }
+					   
+
+				if(playerShield != 0 && playerLance != 0) {
+					joust = true;
+				}
+			}                 
+
+          }
+
+          function tiltOver() {
+          	p1Score += PlayerPoints;
+            	p2Score += AIPoints;
+            	document.getElementById("scores").innerHTML = "You: " + p1Score + " - " + "AI: " + p2Score;
+
+            	joust = false;
+
+			playerLance = 0;
+			playerShield = 0;
+			AILance = 0;
+			AIShield = 0;
+			playerPoints;
+			AIPoints;
+
+			joustVarsSet = 0;
+
+			currTilts++;
+
+			if(currTilts >= numTilts) {
+				joustOver = true;
+			}
+
+			document.getElementById('sHighBox').setAttribute("class", "unselectedBox");
+               document.getElementById('sMedBox').setAttribute("class", "unselectedBox");
+               document.getElementById('sLowBox').setAttribute("class", "unselectedBox");
+               document.getElementById('lHighBox').setAttribute("class", "unselectedBox");
+               document.getElementById('lMedBox').setAttribute("class", "unselectedBox");
+               document.getElementById('lLowBox').setAttribute("class", "unselectedBox");
+
+			init();
+
+          }
+
+
+		function main() {
+
+	          requestAnimationFrame( main );
+
+	          render();
+	           
+	       }
+
+		function render () {
+
+            	var deltaTime = clock.getDelta();
+
+            	if(joust && !joustOver) {
+
+            		if(joustVarsSet == 0) {
+
+            			setJoustVars();
+            			joustVarsSet = 1;
+
+            			setTimeout(tiltOver, 8000);
+
+            		}
+
+            		updatePhysics( deltaTime );
+
+            		controls.update( deltaTime );
+
+            	}
+
+            	if(joustOver) {
+            		if (p1Score > p2Score) {
+            			document.getElementById('scores').innerText = "YOU WIN!!! :)";
+            		}
+            		else if (p2Score > p1Score) {
+            			document.getElementById('scores').innerText = "The Computer won this time :(";
+            		}
+            		else {
+            			document.getElementById('scores').innerText = "It's a Draw! Tilt Again!";
+            		}
+
+            		document.getElementById('winnerBoard').innerText = "Refresh the page to play again!";
+            	}
+
+               renderer.render( scene, camera );
+
+		}
+		</script>
+
+		<div class="centerDiv">
+			<div class="unselectedBox", id="sHighBox">
+	   	 		<p>Shield High</p>
+	  		</div>
+	  		<div class="unselectedBox", id="sMedBox">
+	   	 		<p>Shield Med</p>
+	  		</div>
+	  		<div class="unselectedBox", id="sLowBox">
+	   		 	<p>Shield Low</p>
+	  		</div>
+	  		<div class="unselectedBox", id="lHighBox">
+	   	 		<p>Lance High</p>
+	  		</div>
+	  		<div class="unselectedBox", id="lMedBox">
+	   	 		<p>Lance Med</p>
+	  		</div>
+	  		<div class="unselectedBox", id="lLowBox">
+	   		 	<p>Lance Low</p>
+	  		</div>
+	  	</div>
+
+
+		<br>
+		<br>
+		<br>
+		<div id='scoreboard'>
+			<h2 id='scores'>You: 0 - AI: 0</h2>
+			<h2 id='winnerBoard'>Player with more points after 3 tilts wins!</h2>
+		</div>
+
+
+
+
+	</body>
+</html>
