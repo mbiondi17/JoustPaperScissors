@@ -87,6 +87,88 @@
 	<div id="gameCanvas"></div> 
 		<script src="three.js"></script>
 		<script src="ammo.js"></script>
+		<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+		<script type="text/javascript" src="webgl-utils.js"></script>
+
+		<!-- Loading in vertex shader from lesson03 -->
+		<script type="x-shader/x-vertex" id="playerVertexShader">
+
+			// switch on high precision floats
+			#ifdef GL_ES
+			precision highp float;
+			attribute vec3 aVertexPosition;
+			#endif
+
+			varying vec4 vPosition;
+
+			void main()
+			{
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+				vPosition = vec4(aVertexPosition.x, aVertexPosition.y, aVertexPosition.z, 1.0);
+			}
+
+		</script>
+
+		<script type="x-shader/x-fragment" id="playerFragShader">
+
+			#ifdef GL_ES
+			precision highp float;
+			uniform float time;
+			#endif
+
+			void main()
+			{
+				vec4 color = vec4(1.0,0.0,1.0,1.0);
+				gl_FragColor = abs(mix(vec4(0.3, 0.3, 1.0, 1.0), sin(vec4(0.0,0.0,0.7,0.3)*(time)), 0.2));
+			}
+
+		</script>	
+
+		<script type="x-shader/x-fragment" id="aiFragShader">
+
+			#ifdef GL_ES
+			precision highp float;
+			uniform float time;
+			#endif
+
+			void main()
+			{
+				gl_FragColor = vec4(1.0,0.0,0.2,1.0);
+			}
+
+		</script>	
+
+		<script type="x-shader/x-fragment" id="grassFragShader">
+
+			#ifdef GL_ES
+			precision highp float;
+			uniform float time;
+			varying vec4 vPosition; //Didn't actually end up using this.
+			#endif
+
+			void main()
+			{
+				vec4 color = vec4(1.0,0.0,1.0,1.0);
+				gl_FragColor = min(max(sin(vec4(0.0,0.8,0.0,0.3)*time), vec4(0.0, 0.3, 0.0, 0.4)), vec4(0.0, 0.7, 0.0, 0.8)) ;
+			}
+
+		</script>
+
+		<script type="x-shader/x-fragment" id="skyBoxFragShader">
+
+			#ifdef GL_ES
+			precision highp float;
+			uniform float time;
+			#endif
+
+			void main()
+			{
+				vec4 color = vec4(1.0,0.0,1.0,1.0);
+				gl_FragColor = mix(vec4(0.0, 0.0, 1.0, 1.0), sin(vec4(1.0, 1.0, 1.0, 1.0)*time), 0.35);
+			}
+
+		</script>	
+
 		<script>
 
 		//-----------------------------------
@@ -113,6 +195,9 @@
 	          var pos = new THREE.Vector3();
 	          var quat = new THREE.Quaternion();
 
+
+	          var skyboxOn = true;
+
           // Physics variables
 	          var gravityConstant = -9.8;
 			var collisionConfiguration;
@@ -130,6 +215,7 @@
 			var horse1, horse2;
 			var knight1, knight2;
 			var lance1, lance2;
+			var k1uniforms, k2uniforms, gUniforms, skyUniforms;
 
 		//game logic variables
 			var joust = false;
@@ -268,6 +354,30 @@
 			knightMass = 1;
 			LanceMass = 1000;
 			barrierMass = 100000;
+
+          	//---------------------------------------------------------------
+          	//---------------------- Create the Skybox ----------------------
+          	//---------------------------------------------------------------
+
+          	//Will only be created if "skyboxOn" variable on line 199 is set to TRUE.
+          	if(skyboxOn) {
+
+          		var skyBox;
+
+          		skyUniforms = { time: {type: "f", value: 0 } };
+          		var skyMat = new THREE.ShaderMaterial({
+					uniforms: skyUniforms,
+					vertexShader: document.getElementById("playerVertexShader").innerHTML,
+					fragmentShader: document.getElementById("skyBoxFragShader").innerHTML
+				});
+
+				var skyboxObj = new THREE.Mesh( new THREE.PlaneGeometry( 10000, 10000 ), skyMat );
+				skyboxObj.rotation.x = -(Math.PI / 2);
+				skyboxObj.position.y = -5;	
+				scene.add(skyboxObj)			
+
+          	}
+
           	//---------------------------------------------------------------
           	//---------------------- Create the Ground ----------------------
           	//---------------------------------------------------------------
@@ -276,15 +386,17 @@
 			pos.set( 0, -1, 0 );
 			quat.set( 0, 0, 0, 1 );
 			var ground;
+
+			gUniforms = {
+				time: { type: "f", value: 0 },
+			};
+			var gMat = new THREE.ShaderMaterial({
+				uniforms: gUniforms,
+				vertexShader: document.getElementById("playerVertexShader").innerHTML,
+				fragmentShader: document.getElementById("grassFragShader").innerHTML
+			});
 			
-			var groundObj = new THREE.Mesh( new THREE.BoxGeometry( 80, 1, 40, 1, 1, 1 ), new THREE.MeshBasicMaterial( { color: 0x00F8E7 } ) );
-			textureLoader.load( "./Textures/grasstile.png", function( texture ) {
-				texture.wrapS = THREE.RepeatWrapping;
-				texture.wrapT = THREE.RepeatWrapping;
-				texture.repeat.set( 20, 20 );
-				groundObj.material.map = texture;
-				groundObj.material.needsUpdate = true;
-			} );
+			var groundObj = new THREE.Mesh( new THREE.BoxGeometry( 80, 1, 40, 1, 1, 1 ), gMat );
 			var shape = new Ammo.btBoxShape( new Ammo.btVector3( 80 * 0.5, 1 * 0.5, 40 * 0.5 ) );
 			shape.setMargin( margin );
 			var ground = createRigidBody( groundObj, shape, groundMass, pos, quat, COL_GRD, gdCollidesWith);
@@ -321,6 +433,13 @@
 			pos.set(35, 1, 2.5);
 			quat.set(0, 0, 0, 1);
 
+			k1uniforms = {time: {type: "f", value: 0.0} };
+			var k1Mat = new THREE.ShaderMaterial({
+				uniforms: k1uniforms,
+				vertexShader: document.getElementById("playerVertexShader").innerHTML,
+				fragmentShader: document.getElementById("playerFragShader").innerHTML
+			});
+
 			//Knight 1's "Horse"
 			var knight1Horse = new THREE.Mesh (new THREE.BoxGeometry( 3, 3, 2, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0xFFFFFF } ) );
 			textureLoader.load( "./Textures/cubetex.jpg", function( texture ) {
@@ -341,7 +460,7 @@
 			pos.set(35, 3.25, 2.5);
 			quat.set(0, 0, 0, 1);
 			//Knight 1
-			var knight1Obj =  new THREE.Mesh( new THREE.BoxGeometry( 1.5, 1.5, 1.5, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0x0088FF}) );
+			var knight1Obj =  new THREE.Mesh( new THREE.BoxGeometry( 1.5, 1.5, 1.5, 1, 1, 1 ), k1Mat );
 			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1.5 * 0.5, 1.5 * 0.5, 1.5 * 0.5) );
 			knight1 = createRigidBody( knight1Obj, shape, knightMass, pos, quat, COL_KN1, k1CollidesWith );
 			knight1.castShadow = true;
@@ -402,6 +521,13 @@
 			pos.set(-35, 1, -2.5);
 			quat.set(0, 0, 0, 1);
 
+			k2uniforms = {time: {type: "f", value: 0.0} };
+			var k2Mat = new THREE.ShaderMaterial({
+				uniforms: k2uniforms,
+				vertexShader: document.getElementById("playerVertexShader").innerHTML,
+				fragmentShader: document.getElementById("aiFragShader").innerHTML
+			});
+
 			//Knight 2's "Horse"
 			var knight2Horse = new THREE.Mesh (new THREE.BoxGeometry( 3, 3, 2, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0xFFFFFF } ) );
 			textureLoader.load( "./Textures/cubetex.jpg", function( texture ) {
@@ -422,7 +548,7 @@
 			pos.set(-35, 3.25, -2.5);
 			quat.set(0, 0, 0, 1);
 			//Knight 2
-			var knight2Obj =  new THREE.Mesh( new THREE.BoxGeometry( 1.5, 1.5, 1.5, 1, 1, 1 ), new THREE.MeshBasicMaterial( {color: 0xFF0044}) );
+			var knight2Obj =  new THREE.Mesh( new THREE.BoxGeometry( 1.5, 1.5, 1.5, 1, 1, 1 ), k2Mat);
 			var shape = new Ammo.btBoxShape( new Ammo.btVector3(1.5 * 0.5, 1.5 * 0.5, 1.5 * 0.5) );
 			knight2 = createRigidBody( knight2Obj, shape, knightMass, pos, quat, COL_KN2, k2CollidesWith );
 			knight2.castShadow = true;
@@ -659,7 +785,7 @@
           function tiltOver() {
           	p1Score += PlayerPoints;
             	p2Score += AIPoints;
-            	document.getElementById("scores").innerHTML = "You: " + p1Score + " - " + "AI: " + p2Score;
+            	document.getElementById("scores").innerHTML = "AI: " + p2Score + " - " + "You: " + p1Score;
 
             	joust = false;
 
@@ -701,6 +827,15 @@
 		function render () {
 
             	var deltaTime = clock.getDelta();
+
+            	gUniforms.time.value += deltaTime;
+            	if(skyboxOn) {
+            		skyUniforms.time.value += deltaTime / 5.0;
+            	}
+            	if (!joust) {
+            		k1uniforms.time.value += deltaTime * 10.0;
+            		k2uniforms.time.value += deltaTime;
+            	}
 
             	if(joust && !joustOver) {
 
@@ -762,7 +897,7 @@
 		<br>
 		<br>
 		<div id='scoreboard'>
-			<h2 id='scores'>You: 0 - AI: 0</h2>
+			<h2 id='scores'>AI: 0 - You: 0</h2>
 			<h2 id='winnerBoard'>Player with more points after 3 tilts wins!</h2>
 		</div>
 
